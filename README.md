@@ -16,7 +16,7 @@ This repository provides a streamlined solution to run the Whisper API leveragin
     👉 [**https://github.com/RmG152/rocm-whisper-api**](https://github.com/RmG152/rocm-whisper-api)
 
 * **Docker Hub Image:** Pull the pre-built Docker image directly from Docker Hub:
-    🐳 [**https://hub.docker.com/r/RmG152/rocm-whisper-api**](https://hub.docker.com/r/RmG152/rocm-whisper-api)
+    🐳 [**https://hub.docker.com/r/rmg152/rocm-whisper-api**](https://hub.docker.com/r/Rrmg152/rocm-whisper-api)
 
 ---
 
