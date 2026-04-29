@@ -29,22 +29,22 @@ $Cyan = [System.ConsoleColor]::Cyan
 
 function Write-Success {
     param([string]$Message)
-    Write-Host "✅ $Message" -ForegroundColor $Green
+    Write-Host "SUCCESS: $Message" -ForegroundColor $Green
 }
 
 function Write-Error-Custom {
     param([string]$Message)
-    Write-Host "❌ $Message" -ForegroundColor $Red
+    Write-Host "ERROR: $Message" -ForegroundColor $Red
 }
 
 function Write-Info {
     param([string]$Message)
-    Write-Host "ℹ️  $Message" -ForegroundColor $Cyan
+    Write-Host "INFO: $Message" -ForegroundColor $Cyan
 }
 
 function Write-Warning-Custom {
     param([string]$Message)
-    Write-Host "⚠️  $Message" -ForegroundColor $Yellow
+    Write-Host "WARNING: $Message" -ForegroundColor $Yellow
 }
 
 # Validate version parameter
@@ -70,7 +70,7 @@ Write-Host ""
 
 # Step 1: Update version in __init__.py
 Write-Info "Step 1: Updating version in app/__init__.py"
-$InitFile = "app/__init__.py"
+$InitFile = "../app/__init__.py"
 
 if (-not (Test-Path $InitFile)) {
     Write-Error-Custom "File not found: $InitFile"
@@ -151,5 +151,18 @@ catch {
 Write-Host ""
 Write-Host "✨ Release $Version ready!" -ForegroundColor $Green
 Write-Info "GitHub Actions will automatically create the release in a few moments."
-Write-Info "View it here: https://github.com/$(git config --get remote.origin.url | Select-String -Pattern '(?<=github.com[:/]).*?(?=/|\.git)').com/releases/tag/$Version"
+
+# Get repository URL for the release link
+try {
+    $remoteUrl = git config --get remote.origin.url
+    if ($remoteUrl -match 'github\.com[/:]([^/]+/[^/.]+)') {
+        $repoPath = $matches[1]
+        Write-Info "View it here: https://github.com/$repoPath/releases/tag/$Version"
+    } else {
+        Write-Info "View your releases at: https://github.com/YOUR_USERNAME/YOUR_REPO/releases"
+    }
+} catch {
+    Write-Info "View your releases at: https://github.com/YOUR_USERNAME/YOUR_REPO/releases"
+}
+
 Write-Host ""

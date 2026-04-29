@@ -3,7 +3,6 @@ services:
   # Logical name of the service
   rocm-whisper-api-service:
     # Docker image name and tag to use
-    # This assumes the image has been pre-built with 'docker build -t rocm-whisper-api:latest .'
     image: RmG152/rocm-whisper-api:latest
     # Fix the container name as 'rocm-whisper-api'
     container_name: rocm-whisper-api
