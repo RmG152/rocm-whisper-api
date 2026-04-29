@@ -5,31 +5,32 @@ import traceback
 import tempfile
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
+from app import __version__
 
 # --------------------------------------------------------------------------
-# 1. 모델 및 장치 설정
+# 1. Model and device setup
 # --------------------------------------------------------------------------
 
-# ROCm 지원이 가능한지 확인하고 장치를 설정합니다.
+# Check if ROCm is available and set device
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# 사용할 Whisper 모델을 선택합니다.
+# Select Whisper model to use
 MODEL_NAME = os.getenv("WHISPER_MODEL", "base")
 model = None
 
 # --------------------------------------------------------------------------
-# 2. FastAPI 애플리케이션 초기화 및 모델 로드
+# 2. FastAPI application initialization and model loading
 # --------------------------------------------------------------------------
 app = FastAPI(
     title="ROCm Whisper API",
     description="An API to transcribe audio files using OpenAI's Whisper on ROCm.",
-    version="1.1.0" # 기능 추가로 버전 업데이트
+    version=__version__
 )
 
 @app.on_event("startup")
 def load_whisper_model():
     """
-    FastAPI 앱이 시작될 때 Whisper 모델을 로드합니다.
+    Load Whisper model when FastAPI app starts.
     """
     global model
     try:
@@ -44,12 +45,12 @@ def load_whisper_model():
         print(f"Attempting to load Whisper model: '{MODEL_NAME}'")
         print("="*50)
 
-        # 1단계: 모델을 CPU에 먼저 로드합니다.
+        # Step 1: Load model onto CPU first
         print(f"Step 1: Loading model '{MODEL_NAME}' onto CPU...")
         cpu_model = whisper.load_model(MODEL_NAME, device="cpu")
         print("Step 1: Model loaded on CPU successfully.")
 
-        # 2단계: GPU가 사용 가능하면 모델을 GPU로 이동시킵니다.
+        # Step 2: Move model to GPU if available
         if DEVICE == "cuda":
             print(f"Step 2: Moving model to GPU ({DEVICE})...")
             model = cpu_model.to(DEVICE)
@@ -67,14 +68,14 @@ def load_whisper_model():
         model = None
 
 
-@app.get("/", summary="Health Check", description="API 서버의 상태를 확인합니다.")
+@app.get("/", summary="Health Check", description="Check API server status.")
 def read_root():
     status = "running"
     model_status = "loaded" if model else "failed_to_load"
     return {"status": status, "model_status": model_status, "model_name": MODEL_NAME}
 
 
-@app.post("/transcribe", summary="Transcribe Audio File", description="오디오 파일을 텍스트로 변환합니다.")
+@app.post("/transcribe", summary="Transcribe Audio File", description="Convert audio file to text.")
 async def transcribe_audio(file: UploadFile = File(...)):
     if not model:
         raise HTTPException(status_code=503, detail="Whisper model is not available. Check server logs for details.")
@@ -90,16 +91,16 @@ async def transcribe_audio(file: UploadFile = File(...)):
         
         result = model.transcribe(temp_path, fp16=False)
 
-        # [추가] 오디오 파일의 전체 재생 시간을 계산합니다.
+        # [Added] Calculate total playback time of audio file
         duration = 0
-        # 'segments' 정보가 있는지 확인하고, 있다면 마지막 segment의 'end' 시간을 가져옵니다.
+        # Check if 'segments' info exists, and if so, get the 'end' time of the last segment
         if result.get("segments"):
             last_segment = result["segments"][-1]
             duration = last_segment["end"]
 
         print("Transcription successful.")
 
-        # [수정] JSON 응답에 'duration_seconds' 필드를 추가합니다.
+        # [Modified] Add 'duration_seconds' field to JSON response
         return JSONResponse(content={
             "filename": file.filename,
             "duration_seconds": round(duration, 2),

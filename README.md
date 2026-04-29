@@ -13,10 +13,10 @@ This repository provides a streamlined solution to run the Whisper API leveragin
 ## 🔗 Project Links
 
 * **GitHub Repository:** For the complete source code, detailed development insights, and the `Dockerfile`, please visit:
-    👉 [**https://github.com/jjajjara/rocm-whisper-api**](https://github.com/jjajjara/rocm-whisper-api)
+    👉 [**https://github.com/RmG152/rocm-whisper-api**](https://github.com/RmG152/rocm-whisper-api)
 
 * **Docker Hub Image:** Pull the pre-built Docker image directly from Docker Hub:
-    🐳 [**https://hub.docker.com/r/jjajjara/rocm-whisper-api**](https://hub.docker.com/r/jjajjara/rocm-whisper-api)
+    🐳 [**https://hub.docker.com/r/RmG152/rocm-whisper-api**](https://hub.docker.com/r/RmG152/rocm-whisper-api)
 
 ---
 
@@ -26,7 +26,7 @@ This container is built upon a robust ROCm-enabled PyTorch image:
 `rocm/pytorch:rocm6.3.4_ubuntu24.04_py3.12_pytorch_release_2.4.0`
 
 **Want to use a different PyTorch version or a custom base image?**
-No problem! You can easily modify the `Dockerfile` in the [GitHub repository](https://github.com/jjajjara/rocm-whisper-api). Explore other compatible PyTorch images on the [PyTorch Docker Hub repository](https://hub.docker.com/r/rocm/pytorch) to suit your specific needs.
+No problem! You can easily modify the `Dockerfile` in the [GitHub repository](https://github.com/RmG152/rocm-whisper-api). Explore other compatible PyTorch images on the [PyTorch Docker Hub repository](https://hub.docker.com/r/rocm/pytorch) to suit your specific needs.
 
 ---
 
@@ -56,7 +56,7 @@ For simplified deployment and management of the ROCm-Whisper-API service, using 
 ```yaml
 services:
   rocm-whisper-api-service:
-    image: jjajjara/rocm-whisper-api:latest # Ensure this matches your pushed Docker Hub image tag (e.g., your_username/rocm-whisper-api:latest)
+    image: RmG152/rocm-whisper-api:latest
     container_name: rocm-whisper-api
     restart: unless-stopped
     ports:
@@ -67,13 +67,14 @@ services:
     devices:
       - "/dev/kfd:/dev/kfd" # Essential for ROCm Kernel Fusion Device access
       - "/dev/dri:/dev/dri" # Essential for Direct Rendering Infrastructure access for GPU
-    # (Optional) Volume setup for model caching.
-    # Uncomment the following lines to persist downloaded Whisper models on your host PC
-    # to prevent re-downloading on container restarts and save bandwidth/time.
-    # volumes:
-    #   - ~/.cache/whisper:/root/.cache/whisper
+    volumes:
+      - ~/.cache/whisper:/root/.cache/whisper
 ```
----
+
+## 🙏 Acknowledgments
+
+This project is based on the excellent work of the original author. Special thanks to **jjajjara** for creating the original [rocm-whisper-api](https://github.com/jjajjara/rocm-whisper-api) repository. Their innovative approach to optimizing Whisper for AMD GPUs using ROCm has made this technology accessible to the community.
+
 ## 🧪 How to Test
 
 After successfully running the Docker container, you can test the API using the following methods:
