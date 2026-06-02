@@ -36,6 +36,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          build-args: |
+            BASE_TAG=rocm7.2.2_ubuntu24.04_py3.12_pytorch_release_2.10.0
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 

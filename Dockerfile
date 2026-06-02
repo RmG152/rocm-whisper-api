@@ -1,7 +1,11 @@
-# Use official PyTorch image with ROCm support
-# Tag can be adjusted according to available ROCm versions
-# (https://hub.docker.com/r/rocm/pytorch/tags)
-FROM rocm/pytorch:rocm7.2.2_ubuntu24.04_py3.12_pytorch_release_2.10.0
+# Use official PyTorch image with ROCm support.
+# BASE_TAG is injected at build time (default = the tag this Dockerfile was
+# originally written against). The CI matrix workflow in
+# .github/workflows/build-matrix.yml overrides it for every supported
+# rocm/pytorch upstream tag.
+# Available tags: https://hub.docker.com/r/rocm/pytorch/tags
+ARG BASE_TAG=rocm7.2.2_ubuntu24.04_py3.12_pytorch_release_2.10.0
+FROM rocm/pytorch:${BASE_TAG}
 
 # --- Install system dependencies ---
 # Whisper requires ffmpeg for audio processing

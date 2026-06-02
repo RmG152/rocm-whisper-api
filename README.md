@@ -23,10 +23,54 @@ This repository provides a streamlined solution to run the Whisper API leveragin
 ## 🛠️ Base PyTorch Container & Customization
 
 This container is built upon a robust ROCm-enabled PyTorch image:
-`rocm/pytorch:rocm6.3.4_ubuntu24.04_py3.12_pytorch_release_2.4.0`
+`rocm/pytorch:rocm7.2.2_ubuntu24.04_py3.12_pytorch_release_2.10.0`
 
 **Want to use a different PyTorch version or a custom base image?**
-No problem! You can easily modify the `Dockerfile` in the [GitHub repository](https://github.com/RmG152/rocm-whisper-api). Explore other compatible PyTorch images on the [PyTorch Docker Hub repository](https://hub.docker.com/r/rocm/pytorch) to suit your specific needs.
+No problem! The `Dockerfile` accepts a `BASE_TAG` build-arg, so you can pin any
+modern `rocm/pytorch` image:
+```bash
+docker build --build-arg BASE_TAG=rocm6.4.4_ubuntu24.04_py3.12_pytorch_release_2.7.1 -t my-whisper .
+```
+
+### 🏷️ Available Image Tags
+
+The CI workflow automatically builds and publishes **every modern**
+`rocm/pytorch` upstream tag (ROCm 6.x & 7.x, Ubuntu 22.04/24.04, Python
+3.10–3.13) on a weekly schedule.
+
+Tag convention:
+- **Full**: `rocmX.Y.Z-ubuntuYY.MM-pyA.B-pytorchC.D.E`  
+  e.g. `rocm7.2.4-ubuntu24.04-py3.12-pytorch2.10.0`
+- **Minor alias**: `rocmX.Y.Z` → always points to the latest py/pytorch combo  
+  e.g. `rocm7.2.4`
+- **Major alias**: `rocmX` → always points to the latest minor  
+  e.g. `rocm7`
+- **`latest`** → the upstream `rocm/pytorch:latest` (currently `rocm7.2.4-py3.12-pytorch2.10.0`)
+
+Pull whatever you need:
+```bash
+docker pull rmg152/rocm-whisper-api:rocm7.2.4-ubuntu24.04-py3.12-pytorch2.10.0
+docker pull rmg152/rocm-whisper-api:rocm7
+docker pull rmg152/rocm-whisper-api:latest
+```
+
+See the [full list on Docker Hub →](https://hub.docker.com/r/rmg152/rocm-whisper-api/tags)
+
+### 🤖 Automated updates
+
+The `.github/workflows/build-matrix.yml` workflow:
+
+1. Polls the [rocm/pytorch tags API](https://hub.docker.com/r/rocm/pytorch/tags) on
+   **Mondays 06:00 UTC**.
+2. Compares the upstream modern tags against what is already published in
+   `rmg152/rocm-whisper-api` and only builds the **delta** (new tags).
+3. Detects tags that have been removed from the upstream and **deletes them**
+   from Docker Hub to keep the namespace tidy.
+4. Re-tags the image built from the upstream `:latest` digest as
+   `rmg152/rocm-whisper-api:latest`.
+
+You can also trigger it manually from the **Actions** tab with filters
+(`rocm_major`, `python`, `pytorch`) and a `dry_run` flag for safe inspection.
 
 ---
 

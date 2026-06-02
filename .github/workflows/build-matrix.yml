@@ -1,0 +1,286 @@
+name: Build ROCm/PyTorch matrix
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      rocm_major:
+        description: 'ROCm major filter (7 / 6 / all)'
+        required: false
+        default: 'all'
+      python:
+        description: 'Python filter (3.10 / 3.12 / all)'
+        required: false
+        default: 'all'
+      pytorch:
+        description: 'PyTorch version filter (e.g. 2.10.0, leave empty for all)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Only print what would be built/deleted, do not push or delete'
+        type: boolean
+        required: false
+        default: true
+      force_rebuild:
+        description: 'Ignore delta (rebuild tags even if they already exist in the repo)'
+        type: boolean
+        required: false
+        default: false
+      skip_cleanup:
+        description: 'Do not delete orphan tags from the repo'
+        type: boolean
+        required: false
+        default: false
+  repository_dispatch:
+    types: [rocm-pytorch-updated]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAMESPACE: rmg152/rocm-whisper-api
+
+jobs:
+  detect:
+    name: Detect upstream tags & delta
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.compute.outputs.matrix }}
+      matrix_count: ${{ steps.compute.outputs.matrix_count }}
+      to_delete: ${{ steps.compute.outputs.to_delete }}
+      to_delete_count: ${{ steps.compute.outputs.to_delete_count }}
+      dry_run: ${{ steps.detect_flags.outputs.dry_run }}
+      skip_cleanup: ${{ steps.detect_flags.outputs.skip_cleanup }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve dispatch flags
+        id: detect_flags
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
+            echo "skip_cleanup=${{ inputs.skip_cleanup }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+            echo "skip_cleanup=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install jq
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
+
+      - name: List upstream tags
+        id: list
+        env:
+          ROCM_MAJOR_FILTER: ${{ inputs.rocm_major }}
+          PYTHON_FILTER: ${{ inputs.python }}
+          PYTORCH_FILTER: ${{ inputs.pytorch }}
+        run: |
+          chmod +x scripts/list-rocm-tags.sh
+          ./scripts/list-rocm-tags.sh --json \
+            --rocm-major "${ROCM_MAJOR_FILTER:-all}" \
+            --python "${PYTHON_FILTER:-all}" \
+            --pytorch "${PYTORCH_FILTER:-}" \
+            > upstream.jsonl
+          echo "upstream_count=$(wc -l < upstream.jsonl | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Compute delta & orphans
+        id: compute
+        env:
+          FORCE_REBUILD: ${{ inputs.force_rebuild }}
+          SKIP_CLEANUP: ${{ inputs.skip_cleanup }}
+          NAMESPACE: ${{ env.IMAGE_NAMESPACE }}
+        run: |
+          set -euo pipefail
+
+          # 1) Fetch every tag currently in the repo (Docker Hub API, paginated).
+          existing=()
+          page=1
+          API="https://hub.docker.com/v2/repositories/${NAMESPACE}/tags"
+          while :; do
+            body=$(curl --silent --show-error --fail --max-time 60 "${API}?page=${page}&page_size=100")
+            while IFS= read -r name; do
+              [[ -n "$name" ]] && existing+=("$name")
+            done < <(printf '%s' "$body" | jq -r '.results[].name')
+            next=$(printf '%s' "$body" | jq -r '.next // empty')
+            [[ -z "$next" ]] && break
+            page=$((page + 1))
+            [[ $page -gt 50 ]] && break
+          done
+          echo "Existing tags in ${NAMESPACE}: ${#existing[@]}"
+
+          # 2) Emit the existing tag list as a JSON array.
+          existing_json=$(printf '%s\n' "${existing[@]}" | jq -R . | jq -s 'map(select(. != ""))')
+          printf '%s' "$existing_json" > existing.json
+
+          # 3) Build matrix:
+          #    - force_rebuild=true → all upstream tags
+          #    - else → only the ones whose .sane is NOT in existing.json
+          if [[ "${FORCE_REBUILD:-false}" == "true" ]]; then
+            matrix_json=$(jq -s '.' upstream.jsonl)
+          else
+            matrix_json=$(jq -s --slurpfile existing existing.json \
+              '[.[] | select(([.sane] | inside($existing[0])) | not)]' upstream.jsonl)
+          fi
+          printf '%s' "$matrix_json" > matrix.json
+          matrix_count=$(jq 'length' matrix.json)
+          echo "Build matrix size: ${matrix_count}"
+
+          # 4) Build orphan list = existing tags NOT in WANT set.
+          #    WANT set = all sane/minor_alias/major_alias/is_latest==true of upstream.jsonl.
+          orphans_json='[]'
+          if [[ "${SKIP_CLEANUP:-false}" != "true" ]]; then
+            want_json=$(jq -s '
+              [.[].sane, .[].minor_alias, .[].major_alias] |
+              unique |
+              ( if any(.[]; . == "latest") then . else . + ["latest"] end |
+                map(select(. != null and . != "")) )
+              ' upstream.jsonl)
+            # Add 'latest' if any entry has is_latest==true
+            if jq -e '[.[] | select(.is_latest == true)] | length > 0' upstream.jsonl >/dev/null; then
+              want_json=$(printf '%s' "$want_json" | jq '. + ["latest"] | unique')
+            fi
+            orphans_json=$(jq -n \
+              --slurpfile existing existing.json \
+              --argjson want "$want_json" \
+              '$existing[0] | map(select(. as $t | ($want | index($t)) == null))')
+          fi
+          printf '%s' "$orphans_json" > orphans.json
+          orphan_count=$(jq 'length' orphans.json)
+          echo "Orphan tags to delete: ${orphan_count}"
+
+          # 5) Emit outputs (use heredoc-style for multi-line values).
+          {
+            echo "matrix<<EOF"
+            cat matrix.json
+            echo
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "matrix_count=${matrix_count}" >> "$GITHUB_OUTPUT"
+          {
+            echo "to_delete<<EOF"
+            cat orphans.json
+            echo
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "to_delete_count=${orphan_count}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Build matrix"
+            echo "Upstream modern tags (after filters): $(wc -l < upstream.jsonl | tr -d ' ')"
+            echo "Tags to build this run: ${{ steps.compute.outputs.matrix_count }}"
+            echo "Orphan tags to delete: ${{ steps.compute.outputs.to_delete_count }}"
+            echo "Dry run: ${{ steps.detect_flags.outputs.dry_run }}"
+            echo "Skip cleanup: ${{ steps.detect_flags.outputs.skip_cleanup }}"
+            echo ""
+            echo "### Build plan"
+            jq -r '.[]? | "  - `\(.sane)`  (from \(.upstream))  is_latest=\(.is_latest)"' upstream.jsonl | head -20
+            [[ "$(wc -l < upstream.jsonl | tr -d ' ')" -gt 20 ]] && echo "  ... and $(( $(wc -l < upstream.jsonl | tr -d ' ') - 20 )) more"
+            echo ""
+            echo "### Orphans"
+            if [[ "${{ steps.compute.outputs.to_delete_count }}" -gt 0 ]]; then
+              jq -r '.[]? | "  - \(.)"' <<< "${{ steps.compute.outputs.to_delete }}"
+            else
+              echo "  (none)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-plan
+          path: |
+            upstream.jsonl
+          retention-days: 7
+
+  build:
+    name: Build & push
+    needs: detect
+    if: needs.detect.outputs.dry_run == 'false' && fromJSON(needs.detect.outputs.matrix_count) > 0
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            BASE_TAG=${{ matrix.tag.upstream }}
+          tags: |
+            ${{ env.IMAGE_NAMESPACE }}:${{ matrix.tag.sane }}
+            ${{ env.IMAGE_NAMESPACE }}:${{ matrix.tag.minor_alias }}
+            ${{ env.IMAGE_NAMESPACE }}:${{ matrix.tag.major_alias }}
+            ${{ matrix.tag.is_latest == 'true' && format('{0}:latest', env.IMAGE_NAMESPACE) || '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  cleanup:
+    name: Delete orphan tags
+    needs: detect
+    if: |
+      needs.detect.outputs.dry_run == 'false' &&
+      needs.detect.outputs.skip_cleanup == 'false' &&
+      fromJSON(needs.detect.outputs.to_delete_count) > 0
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install jq
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
+
+      - name: Login to Docker Hub API
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(curl --silent --fail --max-time 30 \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            "https://hub.docker.com/v2/users/login/" | jq -r '.token // empty')
+          if [[ -z "$TOKEN" ]]; then
+            echo "ERROR: failed to obtain Docker Hub auth token" >&2
+            exit 3
+          fi
+          echo "TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+
+      - name: Delete orphans
+        env:
+          NAMESPACE: ${{ env.IMAGE_NAMESPACE }}
+        run: |
+          set -euo pipefail
+          API="https://hub.docker.com/v2/repositories/${NAMESPACE}/tags"
+          echo '${{ needs.detect.outputs.to_delete }}' | jq -r '.[]' | while IFS= read -r t; do
+            [[ -z "$t" ]] && continue
+            encoded=$(printf '%s' "$t" | jq -sRr @uri)
+            http_code=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+              -X DELETE -H "Authorization: Bearer ${TOKEN}" "${API}/${encoded}/")
+            echo "  [$http_code] $t"
+          done
