@@ -184,7 +184,7 @@ jobs:
             echo ""
             echo "### Orphans"
             if [[ "${{ steps.compute.outputs.to_delete_count }}" -gt 0 ]]; then
-              jq -r '.[]? | "  - \(.)"' <<< "${{ steps.compute.outputs.to_delete }}"
+              jq -r '.[]? | "  - \(.)"' <<< '${{ steps.compute.outputs.to_delete }}'
             else
               echo "  (none)"
             fi
