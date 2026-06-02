@@ -127,19 +127,21 @@ jobs:
           echo "Build matrix size: ${matrix_count}"
 
           # 4) Build orphan list = existing tags NOT in WANT set.
-          #    WANT set = all sane/minor_alias/major_alias/is_latest==true of upstream.jsonl.
+          #    WANT set = all sane/minor_alias/major_alias, plus "latest".
+          #    ":latest" is always preserved (at most one image gets that
+          #    alias and removing it would break the symlink to the
+          #    most recent build). We don't need to re-check
+          #    `.is_latest` per row — the only "latest" we ever want
+          #    in the want set comes from the constant below.
           orphans_json='[]'
           if [[ "${SKIP_CLEANUP:-false}" != "true" ]]; then
             want_json=$(jq -s '
               [.[].sane, .[].minor_alias, .[].major_alias] |
               unique |
-              ( if any(.[]; . == "latest") then . else . + ["latest"] end |
-                map(select(. != null and . != "")) )
-              ' upstream.jsonl)
-            # Add 'latest' if any entry has is_latest==true
-            if jq -s -e '[.[] | select(.is_latest == true)] | length > 0' upstream.jsonl >/dev/null; then
-              want_json=$(printf '%s' "$want_json" | jq '. + ["latest"] | unique')
-            fi
+              . + ["latest"] |
+              unique |
+              map(select(. != null and . != ""))
+            ' upstream.jsonl)
             orphans_json=$(jq -n \
               --slurpfile existing existing.json \
               --argjson want "$want_json" \
