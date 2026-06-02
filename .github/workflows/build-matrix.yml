@@ -179,7 +179,7 @@ jobs:
             echo "Skip cleanup: ${{ steps.detect_flags.outputs.skip_cleanup }}"
             echo ""
             echo "### Build plan"
-            jq -r '.[]? | "  - `\(.sane)`  (from \(.upstream))  is_latest=\(.is_latest)"' upstream.jsonl | head -20
+            jq -r '"  - `\(.sane)`  (from \(.upstream))  is_latest=\(.is_latest)"' upstream.jsonl | head -20
             [[ "$(wc -l < upstream.jsonl | tr -d ' ')" -gt 20 ]] && echo "  ... and $(( $(wc -l < upstream.jsonl | tr -d ' ') - 20 )) more"
             echo ""
             echo "### Orphans"
