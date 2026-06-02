@@ -237,7 +237,7 @@ jobs:
             ${{ env.IMAGE_NAMESPACE }}:${{ matrix.tag.sane }}
             ${{ env.IMAGE_NAMESPACE }}:${{ matrix.tag.minor_alias }}
             ${{ env.IMAGE_NAMESPACE }}:${{ matrix.tag.major_alias }}
-            ${{ matrix.tag.is_latest == 'true' && format('{0}:latest', env.IMAGE_NAMESPACE) || '' }}
+            ${{ (matrix.tag.is_latest && format('{0}:latest', env.IMAGE_NAMESPACE)) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false

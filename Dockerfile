@@ -17,21 +17,23 @@ RUN apt-get update && \
 # Set working directory
 WORKDIR /app
 
-# Copy requirements.txt first to leverage dependency caching
-COPY app/requirements.txt .
+# Copy requirements.txt first to leverage dependency caching.
+# The app/ directory is preserved as a package (do not flatten!) so that
+# `from app import __version__` works inside the container.
+COPY app/requirements.txt ./app/requirements.txt
 
 # Upgrade pip and install libraries specified in requirements.txt
 # torch is already included in the base image, so not installed here
 RUN python3 -m pip install --no-cache-dir --upgrade pip && \
-    python3 -m pip install --no-cache-dir -r requirements.txt
+    python3 -m pip install --no-cache-dir -r app/requirements.txt
 
-# Copy application source code
-COPY app/ .
+# Copy application source code (preserves app/ as a Python package)
+COPY app/ ./app/
 
 # --- Container runtime configuration ---
 # Expose port for API server
 EXPOSE 8080
 
 # Define command to run when container starts
-# Run FastAPI application using Uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Run FastAPI application using Uvicorn (app/main.py inside the app package)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
