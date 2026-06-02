@@ -16,7 +16,7 @@ This repository provides a streamlined solution to run the Whisper API leveragin
     👉 [**https://github.com/RmG152/rocm-whisper-api**](https://github.com/RmG152/rocm-whisper-api)
 
 * **Docker Hub Image:** Pull the pre-built Docker image directly from Docker Hub:
-    🐳 [**https://hub.docker.com/r/rmg152/rocm-whisper-api**](https://hub.docker.com/r/Rrmg152/rocm-whisper-api)
+    🐳 [**https://hub.docker.com/r/rmg152/rocm-whisper-api**](https://hub.docker.com/r/rmg152/rocm-whisper-api)
 
 ---
 
@@ -48,6 +48,18 @@ Due to the constraints of the testing environment during development, the `base`
     * **Example:** `WHISPER_MODEL=base`
 
 ---
+
+## 📦 System Requirements
+
+### Disk Space
+**Minimum 95GB of free disk space is required for installation.**
+
+This is primarily due to:
+- Docker image size (ROCm-enabled PyTorch base image)
+- Whisper model cache (depending on model size: base, small, medium, large)
+- Container layers and temporary files during build/runtime
+
+Ensure you have adequate storage available before proceeding with the installation.
 
 ## 🐳 Docker Compose Example
 
